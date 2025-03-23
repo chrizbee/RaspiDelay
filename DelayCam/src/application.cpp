@@ -1,8 +1,6 @@
 #include "application.h"
 #include "cam/image.h"
 #include "cam/viewfinder.h"
-#include "cam/jpegsaver.h"
-#include "util/config.h"
 #include "util/logger.h"
 
 #include <assert.h>
@@ -12,6 +10,7 @@
 #include <QCoreApplication>
 #include <QMutexLocker>
 #include <QStringList>
+#include <QScreen>
 
 using namespace libcamera;
 
@@ -31,12 +30,21 @@ public:
 Application::Application(int &argc, char **argv) :
     QApplication{argc, argv},
     isCapturing_(false),
-    afTriggered_(false),
+    afTriggered_(true),
     frameRate_(30.0)
 {
     // Create and connect to viewfinder
     viewFinder_ = new ViewFinder(nullptr);
     connect(viewFinder_, &ViewFinder::renderComplete, this, &Application::queueRequest);
+
+    // Initialize and start camera
+    if (initCamera())
+        startCamera();
+
+    // Show stream fullscreen
+    // Simply showFullScreen is not working properly so we have to set geometry first
+    viewFinder_->setGeometry(QGuiApplication::primaryScreen()->geometry());
+    viewFinder_->showFullScreen();
 }
 
 Application::~Application()
@@ -51,6 +59,9 @@ Application::~Application()
     // Stop camera manager
     if (cm_)
         cm_->stop();
+
+    // Delete viewfinder
+    delete viewFinder_;
 }
 
 bool Application::initCamera()

@@ -61,9 +61,7 @@ target_link_libraries(DelayCam PRIVATE
     Qt6::OpenGL
     Qt6::OpenGLWidgets
     camera
-    camera-base
-    jpeg
-    exif)
+    camera-base)
 
 # Install destinations
 include(GNUInstallDirs)
