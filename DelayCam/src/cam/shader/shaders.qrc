@@ -1,0 +1,9 @@
+<RCC>
+    <qresource prefix="/">
+        <file>RGB.frag</file>
+        <file>YUV_2_planes.frag</file>
+        <file>YUV_3_planes.frag</file>
+        <file>YUV_packed.frag</file>
+        <file>identity.vert</file>
+    </qresource>
+</RCC>
