@@ -1,6 +1,13 @@
 # RaspiDelay
 Delay Raspberry Pi Cam Stream
 
+## Hardware requirements
+
+- **Raspberry Pi 5**: The more RAM, the longer the possible delay
+- Raspberry Pi Camera Module 3
+- Any pushbutton between any GPIO and GND
+- For a complete list see [hardware.md](hardware.md)
+
 ## Install Raspberry Pi OS
 
 1. Download Raspberry Pi Imager from here: https://www.raspberrypi.com/software/
@@ -63,6 +70,7 @@ nano ~/.config/autostart/delaycam.desktop
 ```ini
 [Desktop Entry]
 Type=Application
-Exec=DelayCam
+Exec=DelayCam -f 30.0 -d 30 -b 17
+# 30s delay @30fps, button on GPIO17
 ```
 
