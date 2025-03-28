@@ -47,7 +47,7 @@ sudo apt install ./wiringpi-*.deb
 
 ## Install DelayCam
 
-Install DelayCam.
+Clone this repository and install the DelayCam application.
 
 ```bash
 git clone https://github.com/chrizbee/RaspiDelay

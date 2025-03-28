@@ -1,3 +1,5 @@
+# Hardware
+
 | Part                    | Link                                                         |
 | ----------------------- | ------------------------------------------------------------ |
 | Raspberry Pi 5 8GB      | https://www.berrybase.de/en/raspberry-pi-5-8gb-ram           |
@@ -8,4 +10,6 @@
 | Micro HDMI Cable        | https://www.berrybase.de/en/offizielles-raspberry-pi-micro-hdmi-kabel-schwarz-2-0m |
 | MicroSD Card            | https://www.berrybase.de/en/raspberry-pi-microsdhc-speicherkarte-a2-class-10-u3-32gb |
 | Mini Arcade Button      | https://www.berrybase.de/en/detail/019234a6cd5f7043bf6fa18ecbafef17 |
-| Some Wire               | https://www.berrybase.de/en/detail/019234a69d7d73c886d16a2d9147b79b |
+| Wire                    | https://www.berrybase.de/en/detail/019234a69d7d73c886d16a2d9147b79b |
+| Monitor                 | Any HDMI Monitor                                             |
+
