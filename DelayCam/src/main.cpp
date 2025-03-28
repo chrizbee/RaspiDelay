@@ -5,8 +5,8 @@
 int main(int argc, char *argv[])
 {
     // Initialize logger
-    fkLogger->init(LogLevel::TRACE, "delaycam.log");
-    fkInfo("Starting DelayCam");
+    dcLogger->init(LogLevel::TRACE, "delaycam.log");
+    dcInfo("Starting DelayCam");
 
     // Configure OpenGL ES 2.0 as the renderable type
     QSurfaceFormat format;
@@ -18,7 +18,6 @@ int main(int argc, char *argv[])
 
     // Create and run application
     QApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
-    QApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
-    Application a(argc, argv);
-    return a.exec();
+    Application app(argc, argv);
+    return app.exec();
 }

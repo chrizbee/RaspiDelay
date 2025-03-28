@@ -22,9 +22,13 @@
 #include <QImage>
 #include <QQueue>
 #include <QMutex>
+#include <QTimer>
+#include <QStackedWidget>
 
 class Image;
 class ViewFinder;
+class ProgressWidget;
+class FramePool;
 
 class Application : public QApplication
 {
@@ -35,13 +39,12 @@ public:
     ~Application();
     bool initCamera();
     void startCamera();
-    void autoFocus();
-    void manualFocus(const QPointF &focus);
     void stopCamera();
     void releaseCamera();
     bool event(QEvent *e) override;
 
 private:
+    void parseCommandline();
     bool configureCamera();
     bool start(bool isPreview);
     void requestComplete(libcamera::Request *request);
@@ -49,10 +52,15 @@ private:
     void queueRequest(libcamera::FrameBuffer *buffer);
 
 private:
+    QStackedWidget *window_;
+    ProgressWidget *progressWidget_;
     ViewFinder *viewFinder_;
+    QTimer autoFocusTimer_;
     std::atomic_bool isCapturing_;
-    std::atomic_bool afTriggered_;
     float frameRate_;
+    float delaySeconds_;
+    int buttonPin_;
+    bool poolWasFull_;
 
     // Camera manager, camera, config and allocator
     std::unique_ptr<libcamera::CameraManager> cm_;
@@ -67,8 +75,10 @@ private:
     std::map<const libcamera::Stream *, QQueue<libcamera::FrameBuffer *>> freeBuffers_;
     std::vector<std::unique_ptr<libcamera::Request>> requests_;
     QQueue<libcamera::Request *> doneQueue_;
-    QQueue<libcamera::Request *> freeQueue_;
-    QMutex mutex_; // Protects freeBuffers_, doneQueue_, and freeQueue_
+    QMutex requestsMutex_; // Protects doneQueue_
+
+    // Frame pool for storing frames to delay stream
+    std::unique_ptr<FramePool> pool_;
 };
 
 #endif // APPLICATION_H

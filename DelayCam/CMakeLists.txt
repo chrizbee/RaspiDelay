@@ -34,13 +34,20 @@ pkg_check_modules(LIBCAMERA libcamera)
 pkg_check_modules(LIBJPEG libjpeg)
 pkg_check_modules(LIBEXIF libexif)
 
+# Find WiringPi
+find_library(WIRINGPI_LIBRARIES NAMES wiringPi)
+include_directories(/usr/local/include)
+link_directories(/usr/local/lib)
+
 # Set project sources variable
 set(PROJECT_SOURCES
     src/main.cpp
     src/application.h          src/application.cpp
+    src/progresswidget.h       src/progresswidget.cpp
 
     src/cam/viewfinder.h       src/cam/viewfinder.cpp
     src/cam/image.h            src/cam/image.cpp
+    src/cam/framepool.h        src/cam/framepool.cpp
     src/cam/shader/shaders.qrc
 
     src/util/logger.h          src/util/logger.cpp
@@ -61,7 +68,8 @@ target_link_libraries(DelayCam PRIVATE
     Qt6::OpenGL
     Qt6::OpenGLWidgets
     camera
-    camera-base)
+    camera-base
+    ${WIRINGPI_LIBRARIES})
 
 # Install destinations
 include(GNUInstallDirs)

@@ -23,12 +23,12 @@
 #define BCYN "\033[0;30;46m"	/*!< ANSI escape sequence for cyan background. */
 #define BWHT "\033[0;30;47m"	/*!< ANSI escape sequence for white background. */
 
-#define fkLogger     Logger::instance()
-#define fkTrace(x)   Logger::instance()->log(fileName(__FILE__), __LINE__, LogLevel::TRACE, x, BWHT, WHT)
-#define fkDebug(x)   Logger::instance()->log(fileName(__FILE__), __LINE__, LogLevel::DEBUG, x, BCYN, CYN)
-#define fkInfo(x)    Logger::instance()->log(fileName(__FILE__), __LINE__, LogLevel::INFO, x, BGRN, GRN)
-#define fkWarning(x) Logger::instance()->log(fileName(__FILE__), __LINE__, LogLevel::WARNING, x, BYLW, YLW)
-#define fkError(x)   Logger::instance()->log(fileName(__FILE__), __LINE__, LogLevel::CRITICAL, x, BRED, RED)
+#define dcLogger     Logger::instance()
+#define dcTrace(x)   Logger::instance()->log(fileName(__FILE__), __LINE__, LogLevel::TRACE, x, BWHT, WHT)
+#define dcDebug(x)   Logger::instance()->log(fileName(__FILE__), __LINE__, LogLevel::DEBUG, x, BCYN, CYN)
+#define dcInfo(x)    Logger::instance()->log(fileName(__FILE__), __LINE__, LogLevel::INFO, x, BGRN, GRN)
+#define dcWarning(x) Logger::instance()->log(fileName(__FILE__), __LINE__, LogLevel::WARNING, x, BYLW, YLW)
+#define dcError(x)   Logger::instance()->log(fileName(__FILE__), __LINE__, LogLevel::CRITICAL, x, BRED, RED)
 
 constexpr const char* fileName(const char* path) {
     const char* file = path;

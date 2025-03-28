@@ -1,13 +1,17 @@
 #include "application.h"
+#include "progresswidget.h"
 #include "cam/image.h"
 #include "cam/viewfinder.h"
+#include "cam/framepool.h"
 #include "util/logger.h"
+#include "wiringPi.h"
 
 #include <assert.h>
 #include <iomanip>
 #include <string>
 
 #include <QCoreApplication>
+#include <QCommandLineParser>
 #include <QMutexLocker>
 #include <QStringList>
 #include <QScreen>
@@ -30,21 +34,43 @@ public:
 Application::Application(int &argc, char **argv) :
     QApplication{argc, argv},
     isCapturing_(false),
-    afTriggered_(true),
-    frameRate_(30.0)
+    frameRate_(30.0),
+    delaySeconds_(30.0),
+    buttonPin_(17),
+    poolWasFull_(false)
 {
-    // Create and connect to viewfinder
+    // Set app info and parse command line arguments
+    setOrganizationName("chrizbee");
+    setOrganizationDomain("chrizbee.github.io");
+    setApplicationName("DelayCam");
+    setApplicationVersion(APP_VERSION);
+    parseCommandline();
+
+    // Create widgets
+    QString title = QString("Stream Delay = %1s").arg(delaySeconds_);
+    window_ = new QStackedWidget(nullptr);
+    progressWidget_ = new ProgressWidget(title, nullptr);
     viewFinder_ = new ViewFinder(nullptr);
-    connect(viewFinder_, &ViewFinder::renderComplete, this, &Application::queueRequest);
+
+    // Add viewfinder and progress widget to window
+    window_->addWidget(progressWidget_);
+    window_->addWidget(viewFinder_);
 
     // Initialize and start camera
     if (initCamera())
         startCamera();
 
-    // Show stream fullscreen
+    // Initialize WiringPi and debounce timer
+    wiringPiSetupGpio();
+    pinMode(buttonPin_, INPUT);
+    pullUpDnControl(buttonPin_, PUD_DOWN);
+    autoFocusTimer_.setSingleShot(true);
+    autoFocusTimer_.setInterval(3000); // 3s
+
+    // Show fullscreen
     // Simply showFullScreen is not working properly so we have to set geometry first
-    viewFinder_->setGeometry(QGuiApplication::primaryScreen()->geometry());
-    viewFinder_->showFullScreen();
+    window_->setGeometry(QGuiApplication::primaryScreen()->geometry());
+    window_->showFullScreen();
 }
 
 Application::~Application()
@@ -60,8 +86,8 @@ Application::~Application()
     if (cm_)
         cm_->stop();
 
-    // Delete viewfinder
-    delete viewFinder_;
+    // Delete the window
+    delete window_;
 }
 
 bool Application::initCamera()
@@ -69,13 +95,13 @@ bool Application::initCamera()
     // Create and start camera manager
     cm_ = std::make_unique<CameraManager>();
     if (cm_->start()) {
-        fkError("Failed to start camera manager!");
+        dcError("Failed to start camera manager!");
         return false;
     }
 
     // Get camera from manager
     if (cm_->cameras().empty()) {
-        fkWarning("No camera found!");
+        dcWarning("No camera found!");
         return false;
     }
 
@@ -83,12 +109,12 @@ bool Application::initCamera()
     // Reset camera pointer if failed, so camera == nullptr
     camera_ = cm_->cameras().front();
     if (camera_->acquire()) {
-        fkWarning("Failed to acquire camera!");
+        dcWarning("Failed to acquire camera!");
         camera_.reset();
         return false;
     } else {
         QString name = QString::fromStdString(*camera_->properties().get(libcamera::properties::Model));
-        fkInfo("Using camera" + name);
+        dcInfo("Using camera" + name);
     }
     return true;
 }
@@ -97,23 +123,6 @@ void Application::startCamera()
 {
     stopCamera();
     configureCamera();
-}
-
-void Application::autoFocus()
-{
-    fkInfo("Autofocus triggered");
-    afTriggered_ = true;
-}
-
-void Application::manualFocus(const QPointF &focus)
-{
-    // Setting a point in the resulting frame that needs focus is not implemented
-    // We could set the lens position like this:
-    // request->controls().set(controls::AfMode, controls::AfModeManual);
-    // request->controls().set(controls::LensPosition, 0.5);
-    // See: https://www.libcamera.org/api-html/namespacelibcamera_1_1controls.html#acfb623408035e51db904a0f3928a863e
-    fkWarning("Manual focus is not implemented yet!");
-    (void)focus;
 }
 
 void Application::stopCamera()
@@ -128,12 +137,10 @@ void Application::stopCamera()
     // Clear buffers and queues
     mappedBuffers_.clear();
     requests_.clear();
-    freeQueue_.clear();
     allocator_.reset();
     config_.reset();
     freeBuffers_.clear();
     doneQueue_.clear();
-    viewFinder_->stop();
 }
 
 void Application::releaseCamera()
@@ -150,18 +157,46 @@ bool Application::event(QEvent *e)
     } else return QApplication::event(e);
 }
 
+void Application::parseCommandline()
+{
+    // Create parser
+    QCommandLineParser parser;
+    parser.setApplicationDescription("Delay camera stream by x seconds");
+    parser.addHelpOption();
+    parser.addVersionOption();
+
+    // Add options
+    QCommandLineOption frameRateOption(QStringList() << "f" << "framerate", "Framerate in fps",        "framerate");
+    QCommandLineOption delayOption(    QStringList() << "d" << "delay",     "Stream delay in seconds", "delay");
+    QCommandLineOption buttonPinOption(QStringList() << "b" << "buttonpin", "Button GPIO number",      "pin");
+    parser.addOptions(QList<QCommandLineOption>() << frameRateOption << delayOption << buttonPinOption);
+
+    // Process the command line arguments
+    parser.process(*this);
+
+    // Update member variables if options were provided
+    if (parser.isSet(frameRateOption))
+        frameRate_ = parser.value(frameRateOption).toFloat();
+    if (parser.isSet(delayOption))
+        delaySeconds_ = parser.value(delayOption).toFloat();
+    if (parser.isSet(buttonPinOption))
+        buttonPin_ = parser.value(buttonPinOption).toInt();
+    dcError(parser.value(frameRateOption));
+    dcInfo(QString("Using GPIO %1 and %2s delay @ %3fps").arg(buttonPin_).arg(delaySeconds_).arg(frameRate_));
+}
+
 bool Application::configureCamera()
 {
     // Check if camera is acquried
     if (!camera_) {
-        fkWarning("Initialize camera before configuration!");
+        dcWarning("Initialize camera before configuration!");
         return false;
     }
 
     // Generate viewfinder configuration
     config_ = camera_->generateConfiguration({ StreamRole::Viewfinder });
     if (!config_ || config_->empty()) {
-        fkWarning("Failed to generate camera configuration!");
+        dcWarning("Failed to generate camera configuration!");
         return false;
     }
 
@@ -172,7 +207,7 @@ bool Application::configureCamera()
     config_->orientation = libcamera::Orientation::Rotate0;
 
     // Edit configuration
-    fkInfo("Using size " + QString::number(s.width()) + "x" + QString::number(s.height()));
+    dcInfo("Using size " + QString::number(s.width()) + "x" + QString::number(s.height()));
     StreamConfiguration &cfg = config_->at(0);
     cfg.size.width = s.width();
     cfg.size.height = s.height();
@@ -184,9 +219,9 @@ bool Application::configureCamera()
     if (std::find(camFormats.begin(), camFormats.end(), format) != camFormats.end())
         cfg.pixelFormat = format;
     else {
-        fkWarning("Format not supported! Use one of:");
+        dcWarning("Format not supported! Use one of:");
         for (auto &format : camFormats)
-            fkInfo(format.toString().c_str());
+            dcInfo(format.toString().c_str());
     }
 
     // Setting fixed exposure times will disable the AE algorithm
@@ -215,15 +250,15 @@ bool Application::configureCamera()
     // Validate configuration
     CameraConfiguration::Status validation = config_->validate();
     if (validation == CameraConfiguration::Adjusted) {
-        fkInfo(QString("Stream configuration adjusted to ") + cfg.toString().c_str());
+        dcInfo(QString("Stream configuration adjusted to ") + cfg.toString().c_str());
     } else if (validation == CameraConfiguration::Invalid) {
-        fkWarning("Failed to create valid camera configuration!");
+        dcWarning("Failed to create valid camera configuration!");
         return false;
     }
 
     // Configure camera
     if (camera_->configure(config_.get()) < 0) {
-        fkInfo("Failed to configure camera!");
+        dcInfo("Failed to configure camera!");
         return false;
     }
 
@@ -242,7 +277,7 @@ bool Application::configureCamera()
     for (StreamConfiguration &c : *config_) {
         Stream *stream = c.stream();
         if (allocator_->allocate(stream) < 0) {
-            fkWarning("Failed to allocate capture buffers!");
+            dcWarning("Failed to allocate capture buffers!");
             goto error;
         }
 
@@ -250,9 +285,13 @@ bool Application::configureCamera()
         for (const std::unique_ptr<FrameBuffer> &buffer : allocator_->buffers(stream)) {
             std::unique_ptr<Image> image = Image::fromFrameBuffer(buffer.get(), Image::MapMode::ReadOnly);
             assert(image != nullptr);
-            mappedBuffers_[buffer.get()] = std::move(image);
+
+            // Create pool from first sample image
+            if (pool_ == nullptr || pool_->capacity() == 0)
+                pool_ = FramePool::create(*(image.get()), delaySeconds_, frameRate_);
 
             // Store buffers on the free list
+            mappedBuffers_[buffer.get()] = std::move(image);
             freeBuffers_[stream].enqueue(buffer.get());
         }
     }
@@ -262,11 +301,11 @@ bool Application::configureCamera()
         FrameBuffer *buffer = freeBuffers_[stream_].dequeue();
         std::unique_ptr<Request> request = camera_->createRequest();
         if (!request) {
-            fkWarning("Can't create request!");
+            dcWarning("Can't create request!");
             goto error;
         }
         if (request->addBuffer(stream_, buffer) < 0) {
-            fkWarning("Can't set buffer for request!");
+            dcWarning("Can't set buffer for request!");
             goto error;
         }
         requests_.push_back(std::move(request));
@@ -274,7 +313,7 @@ bool Application::configureCamera()
 
     // Start the camera
     if (camera_->start(&controls_)) {
-        fkWarning("Failed to start capture!");
+        dcWarning("Failed to start capture!");
         goto error;
     }
 
@@ -284,7 +323,7 @@ bool Application::configureCamera()
     // Queue all requests
     for (std::unique_ptr<Request> &request : requests_) {
         if (camera_->queueRequest(request.get()) < 0) {
-            fkWarning("Can't queue request!");
+            dcWarning("Can't queue request!");
             goto error_disconnect;
         }
     }
@@ -314,7 +353,7 @@ void Application::requestComplete(libcamera::Request *request)
     // expensive operations are not allowed. This is why we just add
     // the buffer to the done queue and post an event to be handled
     {
-        QMutexLocker locker(&mutex_);
+        QMutexLocker locker(&requestsMutex_);
         doneQueue_.enqueue(request);
     }
     QCoreApplication::postEvent(this, new CaptureEvent);
@@ -322,51 +361,70 @@ void Application::requestComplete(libcamera::Request *request)
 
 void Application::processCaptureEvent()
 {
+    static bool firstFrame = true;
+
     // Retrieve the next buffer from the done queue. The queue may be empty
     // if stopCapture() has been called while a CaptureEvent was posted but
     // not processed yet. Return immediately in that case.
     Request *request;
     {
-        QMutexLocker locker(&mutex_);
+        QMutexLocker locker(&requestsMutex_);
         if (!doneQueue_.isEmpty())
             request = doneQueue_.dequeue();
         else return;
     }
 
+    // Check for button and timer state
+    // One can also check if af is still scanning, but I want some extra time
+    // const ControlList &metadata = completedRequest->metadata();
+    // if (metadata.contains(controls::AfState))
+    // int afState = metadata.get(controls::AfState)
+    bool buttonIsPressed = digitalRead(buttonPin_) == HIGH;
+    bool timerIsRunning = autoFocusTimer_.isActive();
+    bool needRealtime = buttonIsPressed || timerIsRunning;
+
     // Get buffer and process it
+    FrameBuffer *buffer = nullptr;
     if (request->buffers().count(stream_)) {
-        ControlList &metadata = request->metadata();
-        FrameBuffer *buffer = request->buffers().at(stream_);
+        buffer = request->buffers().at(stream_);
         Image *imageBuffer = mappedBuffers_[buffer].get();
-        viewFinder_->render(buffer, imageBuffer);
+
+        // Get oldest frame and copy current frame to pool
+        const PooledFrame *currentFrame = pool_->storeFrame(*imageBuffer);
+        const PooledFrame *oldestFrame = pool_->getOldestFrame();
+
+        // Use current frame if realtime is needed
+        const PooledFrame *renderFrame = needRealtime ? currentFrame : oldestFrame;
+
+        // Render frame if pool is full
+        if (pool_->isFull()) {
+
+            // Switch to viewfinder if it just became full
+            if (!poolWasFull_) {
+                poolWasFull_ = true;
+                window_->setCurrentIndex(1);
+            }
+
+            // Render selected frame
+            viewFinder_->render(renderFrame);
+
+        // Render progress if not full yet
+        } else progressWidget_->setProgress(pool_->size(), pool_->capacity());
     }
 
-    // Put request from done to free queue
-    // The request will be re-queued after the viewfinder has rendered the buffer
+    // Reuse request right away, since we already copied the frame
     request->reuse();
-    QMutexLocker locker(&mutex_);
-    freeQueue_.enqueue(request);
-}
-
-void Application::queueRequest(libcamera::FrameBuffer *buffer)
-{
-    // Get request from free queue
-    Request *request;
-    {
-        QMutexLocker locker(&mutex_);
-        if (freeQueue_.isEmpty())
-            return;
-        request = freeQueue_.dequeue();
-    }
 
     // Set autofocus if triggered
-    if (afTriggered_) {
+    if (firstFrame || (buttonIsPressed)) {
+        firstFrame = false;
         request->controls().set(controls::AfMode, controls::AfModeAuto);
         request->controls().set(controls::AfTrigger, 0);
-        afTriggered_ = false;
+        autoFocusTimer_.start();
     }
 
     // Add buffer and queue request
-    request->addBuffer(stream_, buffer);
+    if (buffer != nullptr)
+        request->addBuffer(stream_, buffer);
     camera_->queueRequest(request);
 }

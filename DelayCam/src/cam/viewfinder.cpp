@@ -1,13 +1,11 @@
 #include "cam/viewfinder.h"
-#include "cam/image.h"
+#include "cam/framepool.h"
 #include "util/logger.h"
-
 #include <assert.h>
 
 #include <QByteArray>
+#include <QPainter>
 #include <QFile>
-
-//#define DEBUG_FPS
 
 static const QList<libcamera::PixelFormat> supportedFormats {
     // YUV - packed (single plane)
@@ -38,8 +36,7 @@ static const QList<libcamera::PixelFormat> supportedFormats {
 
 ViewFinder::ViewFinder(QWidget *parent) :
     QOpenGLWidget(parent),
-    image_(nullptr),
-    buffer_(nullptr),
+    frame_(nullptr),
     vertexShaderFile_(":identity.vert"),
     vertexBuffer_(QOpenGLBuffer::VertexBuffer)
 {
@@ -47,7 +44,7 @@ ViewFinder::ViewFinder(QWidget *parent) :
 
 ViewFinder::~ViewFinder()
 {
-    stop();
+    frame_ = nullptr;
     removeShader();
 
     // TODO: There is no OpenGL context anymore here
@@ -70,7 +67,7 @@ void ViewFinder::setFormat(const libcamera::PixelFormat &format, const QSize &si
         // Select new format
         if (selectFormat(format))
             format_ = format;
-        else fkWarning(QString("Unsupported format") + format.toString().c_str() + "!");
+        else dcWarning(QString("Unsupported format") + format.toString().c_str() + "!");
     }
 
     // Set and update geometry
@@ -79,40 +76,11 @@ void ViewFinder::setFormat(const libcamera::PixelFormat &format, const QSize &si
     updateGeometry();
 }
 
-void ViewFinder::render(libcamera::FrameBuffer *buffer, Image *image)
+void ViewFinder::render(const PooledFrame *frame)
 {
-    // Calculate and print fps
-#ifdef DEBUG_FPS
-    static uint8_t counter = 0;
-    static uint64_t lastBufferTime = 0;
-    const libcamera::FrameMetadata &metadata = buffer->metadata();
-    double fps = metadata.timestamp - lastBufferTime;
-    fps = lastBufferTime && fps ? 1000000000.0 / fps : 0.0;
-    lastBufferTime = metadata.timestamp;
-    if (++counter % 10 == 0)
-        fkDebug(QString::number(fps));
-#endif
-
-    // Release buffer
-    if (buffer_)
-        renderComplete(buffer);
-
-    // Set image and repaint
-    image_ = image;
+    // Set frame and repaint
+    frame_ = frame;
     update();
-    buffer_ = buffer;
-}
-
-void ViewFinder::stop()
-{
-    // Release buffer
-    // renderComplete() is currently just connected to queueRequest()
-    // to instantly request the next frame
-    if (buffer_) {
-        renderComplete(buffer_);
-        buffer_ = nullptr;
-        image_ = nullptr;
-    }
 }
 
 void ViewFinder::initializeGL()
@@ -145,7 +113,7 @@ void ViewFinder::initializeGL()
 
     // Create Vertex Shader
     if (!createVertexShader())
-        fkWarning("Failed to create vertex shader!");
+        dcWarning("Failed to create vertex shader!");
 
     glClearColor(1.0f, 1.0f, 1.0f, 0.0f);
 }
@@ -155,13 +123,15 @@ void ViewFinder::paintGL()
     // Create fragment shader once
     if (!fragmentShader_)
         if (!createFragmentShader())
-            fkWarning("Failed to create fragment shader!");
+            dcWarning("Failed to create fragment shader!");
 
-    // Render image
-    if (image_) {
-        glClearColor(0.0, 0.0, 0.0, 1.0);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // Clear background and set flags
+    glClearColor(0.0, 0.0, 0.0, 1.0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glDisable(GL_DEPTH_TEST);
 
+    // Render frame
+    if (frame_) {
         doRender();
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     }
@@ -296,7 +266,7 @@ bool ViewFinder::createFragmentShader()
     // Load fragment shader from file
     QFile file(fragmentShaderFile_);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        fkWarning(fragmentShaderFile_ + "not found!");
+        dcWarning(fragmentShaderFile_ + "not found!");
         return false;
     }
 
@@ -307,20 +277,20 @@ bool ViewFinder::createFragmentShader()
 
     // Compile fragment shader
     if (!fragmentShader_->compileSourceCode(src)) {
-        fkWarning(fragmentShader_->log());
+        dcWarning(fragmentShader_->log());
         return false;
     }
 
     // Add and link shader
     shaderProgram_.addShader(fragmentShader_.get());
     if (!shaderProgram_.link()) {
-        fkWarning(shaderProgram_.log());
+        dcWarning(shaderProgram_.log());
         close();
     }
 
     // Bind shader pipeline for use
     if (!shaderProgram_.bind()) {
-        fkWarning(shaderProgram_.log());
+        dcWarning(shaderProgram_.log());
         close();
     }
 
@@ -354,7 +324,7 @@ bool ViewFinder::createVertexShader()
     // Create and compile vertex shader
     vertexShader_ = std::make_unique<QOpenGLShader>(QOpenGLShader::Vertex, this);
     if (!vertexShader_->compileSourceFile(vertexShaderFile_)) {
-        fkWarning(vertexShader_->log());
+        dcWarning(vertexShader_->log());
         return false;
     }
 
@@ -395,7 +365,7 @@ void ViewFinder::doRender()
                  0,
                  GL_LUMINANCE,
                  GL_UNSIGNED_BYTE,
-                 image_->data(0).data());
+                 frame_->data(0).data());
         shaderProgram_.setUniformValue(textureUniformY_, 0);
 
         // Activate texture UV/VU
@@ -409,7 +379,7 @@ void ViewFinder::doRender()
                  0,
                  GL_LUMINANCE_ALPHA,
                  GL_UNSIGNED_BYTE,
-                 image_->data(1).data());
+                 frame_->data(1).data());
         shaderProgram_.setUniformValue(textureUniformU_, 1);
 
         stridePixels = stride_;
@@ -427,7 +397,7 @@ void ViewFinder::doRender()
                  0,
                  GL_LUMINANCE,
                  GL_UNSIGNED_BYTE,
-                 image_->data(0).data());
+                 frame_->data(0).data());
         shaderProgram_.setUniformValue(textureUniformY_, 0);
 
         // Activate texture U
@@ -441,7 +411,7 @@ void ViewFinder::doRender()
                  0,
                  GL_LUMINANCE,
                  GL_UNSIGNED_BYTE,
-                 image_->data(1).data());
+                 frame_->data(1).data());
         shaderProgram_.setUniformValue(textureUniformU_, 1);
 
         // Activate texture V
@@ -455,7 +425,7 @@ void ViewFinder::doRender()
                  0,
                  GL_LUMINANCE,
                  GL_UNSIGNED_BYTE,
-                 image_->data(2).data());
+                 frame_->data(2).data());
         shaderProgram_.setUniformValue(textureUniformV_, 2);
 
         stridePixels = stride_;
@@ -473,7 +443,7 @@ void ViewFinder::doRender()
                  0,
                  GL_LUMINANCE,
                  GL_UNSIGNED_BYTE,
-                 image_->data(0).data());
+                 frame_->data(0).data());
         shaderProgram_.setUniformValue(textureUniformY_, 0);
 
         // Activate texture V
@@ -487,7 +457,7 @@ void ViewFinder::doRender()
                  0,
                  GL_LUMINANCE,
                  GL_UNSIGNED_BYTE,
-                 image_->data(1).data());
+                 frame_->data(1).data());
         shaderProgram_.setUniformValue(textureUniformV_, 2);
 
         // Activate texture U
@@ -501,7 +471,7 @@ void ViewFinder::doRender()
                  0,
                  GL_LUMINANCE,
                  GL_UNSIGNED_BYTE,
-                 image_->data(2).data());
+                 frame_->data(2).data());
         shaderProgram_.setUniformValue(textureUniformU_, 1);
 
         stridePixels = stride_;
@@ -524,7 +494,7 @@ void ViewFinder::doRender()
                  0,
                  GL_RGBA,
                  GL_UNSIGNED_BYTE,
-                 image_->data(0).data());
+                 frame_->data(0).data());
         shaderProgram_.setUniformValue(textureUniformY_, 0);
 
         // The shader needs the step between two texture pixels in the
@@ -552,7 +522,7 @@ void ViewFinder::doRender()
                  0,
                  GL_RGBA,
                  GL_UNSIGNED_BYTE,
-                 image_->data(0).data());
+                 frame_->data(0).data());
         shaderProgram_.setUniformValue(textureUniformY_, 0);
 
         stridePixels = stride_ / 4;
@@ -570,7 +540,7 @@ void ViewFinder::doRender()
                  0,
                  GL_RGB,
                  GL_UNSIGNED_BYTE,
-                 image_->data(0).data());
+                 frame_->data(0).data());
         shaderProgram_.setUniformValue(textureUniformY_, 0);
 
         stridePixels = stride_ / 3;

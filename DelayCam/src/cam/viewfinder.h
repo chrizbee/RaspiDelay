@@ -6,7 +6,6 @@
 
 #include "util/undefkeywords.h"
 #include <libcamera/formats.h>
-#include <libcamera/framebuffer.h>
 
 #include <QOpenGLWidget>
 #include <QOpenGLFunctions>
@@ -15,6 +14,7 @@
 #include <QOpenGLTexture>
 
 class Image;
+class PooledFrame;
 
 class ViewFinder : public QOpenGLWidget, protected QOpenGLFunctions
 {
@@ -27,11 +27,7 @@ public:
 private:
     friend class Application;
     void setFormat(const libcamera::PixelFormat &format, const QSize &size, uint stride);
-    void render(libcamera::FrameBuffer *buffer, Image *image);
-    void stop();
-
-Q_SIGNALS:
-    void renderComplete(libcamera::FrameBuffer *buffer);
+    void render(const PooledFrame *frame);
 
 protected:
     void initializeGL() override;
@@ -51,9 +47,8 @@ private:
     // Sizes and buffers
     QSize size_;
     uint stride_;
-    Image *image_;
+    const PooledFrame *frame_;
     libcamera::PixelFormat format_;
-    libcamera::FrameBuffer *buffer_;
 
     // Shaders
     QOpenGLShaderProgram shaderProgram_;
