@@ -16,25 +16,39 @@ sudo apt update
 sudo apt upgrade -y
 ```
 
-Install git, ffplay and (optionally) locate commands.
+Install build tools and libcamera.
 
 ```bash
-sudo apt install -y git ffmpeg mlocate
+sudo apt install -y cmake git build-essential libcamera-dev
 ```
 
-## Clone repository or copy script
+Install Qt6.
 
-Either clone this repository
+```bash
+sudo apt install -y qtcreator qt6-base-dev qt6-base-dev-tools qtchooser qt6-5compat-dev qt6-multimedia-dev qt6-tools-dev qt6-tools-dev-tools qt6-wayland*
+```
+
+Install WiringPi: https://github.com/WiringPi/WiringPi.
+
+```bash
+git clone https://github.com/WiringPi/WiringPi.git
+cd WiringPi
+./build debian
+mv debian-template/wiringpi-*.deb .
+sudo apt install ./wiringpi-*.deb
+```
+
+## Install DelayCam
+
+Install DelayCam.
 
 ```bash
 git clone https://github.com/chrizbee/RaspiDelay
-```
-
-or copy the [`rpicam-delay.sh`](rpicam-delay.sh) script
-
-```bash
-mkdir ~/RaspiDelay
-nano ~/RaspiDelay/rpicam-delay.sh
+cd RaspiDelay/DelayCam
+mkdir build && cd build
+cmake -DCMAKE_BUILD_TYPE=Release ..
+cmake --build . -j$(nproc)
+sudo make install
 ```
 
 ## Launch script on startup
@@ -43,12 +57,12 @@ Create the desktop entry in the autostart directory
 
 ```bash
 mkdir -p ~/.config/autostart
-nano ~/.config/autostart/rpicam-delay.desktop
+nano ~/.config/autostart/delaycam.desktop
 ```
 
 ```ini
 [Desktop Entry]
 Type=Application
-Exec=bash /home/pi/RaspiDelay/rpicam-delay.sh
+Exec=DelayCam
 ```
 

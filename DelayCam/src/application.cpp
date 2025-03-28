@@ -181,7 +181,6 @@ void Application::parseCommandline()
         delaySeconds_ = parser.value(delayOption).toFloat();
     if (parser.isSet(buttonPinOption))
         buttonPin_ = parser.value(buttonPinOption).toInt();
-    dcError(parser.value(frameRateOption));
     dcInfo(QString("Using GPIO %1 and %2s delay @ %3fps").arg(buttonPin_).arg(delaySeconds_).arg(frameRate_));
 }
 

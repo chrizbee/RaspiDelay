@@ -31,8 +31,6 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets OpenGL OpenGLWidgets)
 # Find libcamera and dependencies
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBCAMERA libcamera)
-pkg_check_modules(LIBJPEG libjpeg)
-pkg_check_modules(LIBEXIF libexif)
 
 # Find WiringPi
 find_library(WIRINGPI_LIBRARIES NAMES wiringPi)
