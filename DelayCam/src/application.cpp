@@ -63,7 +63,7 @@ Application::Application(int &argc, char **argv) :
     // Initialize WiringPi and debounce timer
     wiringPiSetupGpio();
     pinMode(buttonPin_, INPUT);
-    pullUpDnControl(buttonPin_, PUD_DOWN);
+    pullUpDnControl(buttonPin_, PUD_UP);
     autoFocusTimer_.setSingleShot(true);
     autoFocusTimer_.setInterval(3000); // 3s
 
@@ -200,16 +200,17 @@ bool Application::configureCamera()
     }
 
     // Raspberry Pi Camera v3: 1536x864 2304x1296 4608x2592
-    QSize s(1536, 864);
+    // libcamera will automatically pick the next best size
+    QSize size = QGuiApplication::primaryScreen()->size();
 
     // Set orientation
     config_->orientation = libcamera::Orientation::Rotate0;
 
     // Edit configuration
-    dcInfo("Using size " + QString::number(s.width()) + "x" + QString::number(s.height()));
+    dcInfo("Using size " + QString::number(size.width()) + "x" + QString::number(size.height()));
     StreamConfiguration &cfg = config_->at(0);
-    cfg.size.width = s.width();
-    cfg.size.height = s.height();
+    cfg.size.width = size.width();
+    cfg.size.height = size.height();
     cfg.bufferCount = 4;
 
     // Use a format supported by the viewfinder
@@ -378,7 +379,7 @@ void Application::processCaptureEvent()
     // const ControlList &metadata = completedRequest->metadata();
     // if (metadata.contains(controls::AfState))
     // int afState = metadata.get(controls::AfState)
-    bool buttonIsPressed = digitalRead(buttonPin_) == HIGH;
+    bool buttonIsPressed = digitalRead(buttonPin_) == LOW;
     bool timerIsRunning = autoFocusTimer_.isActive();
     bool needRealtime = buttonIsPressed || timerIsRunning;
 
