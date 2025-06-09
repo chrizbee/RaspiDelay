@@ -58,9 +58,20 @@ cmake --build . -j$(nproc)
 sudo make install
 ```
 
+Create a config file.
+
+```bash
+mkdir -p ~/.config && cat > ~/.config/delaycam.cfg << EOF
+framerate=30.0
+delay=30.0
+buttonpin=17
+autofocus=false
+EOF
+```
+
 ## Launch script on startup
 
-Create the desktop entry in the autostart directory
+Create the desktop entry in the autostart directory.
 
 ```bash
 mkdir -p ~/.config/autostart

@@ -14,7 +14,9 @@
 #include <QCommandLineParser>
 #include <QMutexLocker>
 #include <QStringList>
+#include <QSettings>
 #include <QScreen>
+#include <QDir>
 
 using namespace libcamera;
 
@@ -37,6 +39,7 @@ Application::Application(int &argc, char **argv) :
     frameRate_(30.0),
     delaySeconds_(30.0),
     buttonPin_(17),
+    alwaysAutoFocus_(false),
     poolWasFull_(false)
 {
     // Set app info and parse command line arguments
@@ -44,7 +47,9 @@ Application::Application(int &argc, char **argv) :
     setOrganizationDomain("chrizbee.github.io");
     setApplicationName("DelayCam");
     setApplicationVersion(APP_VERSION);
+    parseSettings();
     parseCommandline();
+    dcInfo(QString("Using GPIO %1 and %2s delay @ %3fps, autofocus: %4").arg(buttonPin_).arg(delaySeconds_).arg(frameRate_).arg(alwaysAutoFocus_));
 
     // Create widgets
     QString title = QString("Stream Delay = %1s").arg(delaySeconds_);
@@ -114,7 +119,7 @@ bool Application::initCamera()
         return false;
     } else {
         QString name = QString::fromStdString(*camera_->properties().get(libcamera::properties::Model));
-        dcInfo("Using camera" + name);
+        dcInfo("Using camera: " + name);
     }
     return true;
 }
@@ -157,6 +162,25 @@ bool Application::event(QEvent *e)
     } else return QApplication::event(e);
 }
 
+void Application::parseSettings()
+{
+    // Get the config file path
+    QString configPath = QDir::homePath() + "/.config/delaycam.cfg";
+
+    // Check if config file exists
+    if (!QFile::exists(configPath)) {
+        dcInfo("Config file not found");
+        return;
+    }
+
+    // Read settings with current values as defaults
+    QSettings settings(configPath, QSettings::IniFormat);
+    frameRate_ = settings.value("framerate", frameRate_).toFloat();
+    delaySeconds_ = settings.value("delay", delaySeconds_).toFloat();
+    buttonPin_ = settings.value("buttonpin", buttonPin_).toInt();
+    alwaysAutoFocus_ = settings.value("autofocus", alwaysAutoFocus_).toBool();
+}
+
 void Application::parseCommandline()
 {
     // Create parser
@@ -169,10 +193,25 @@ void Application::parseCommandline()
     QCommandLineOption frameRateOption(QStringList() << "f" << "framerate", "Framerate in fps",        "framerate");
     QCommandLineOption delayOption(    QStringList() << "d" << "delay",     "Stream delay in seconds", "delay");
     QCommandLineOption buttonPinOption(QStringList() << "b" << "buttonpin", "Button GPIO number",      "pin");
-    parser.addOptions(QList<QCommandLineOption>() << frameRateOption << delayOption << buttonPinOption);
+    QCommandLineOption autoFocusOption(QStringList() << "a" << "autofocus", "Enable auto focus");
+    QList<QCommandLineOption> cmdOptions{frameRateOption, delayOption, buttonPinOption, autoFocusOption};
+    parser.addOptions(cmdOptions);
 
     // Process the command line arguments
     parser.process(*this);
+
+    // Check if there are any command line parameters
+    bool anyOptionSet = false;
+    for (const auto& option : cmdOptions) {
+        if (parser.isSet(option)) {
+            anyOptionSet = true;
+            break;
+        }
+    }
+    if (!anyOptionSet) {
+        dcInfo("No command line parameters passed");
+        return;
+    }
 
     // Update member variables if options were provided
     if (parser.isSet(frameRateOption))
@@ -181,7 +220,8 @@ void Application::parseCommandline()
         delaySeconds_ = parser.value(delayOption).toFloat();
     if (parser.isSet(buttonPinOption))
         buttonPin_ = parser.value(buttonPinOption).toInt();
-    dcInfo(QString("Using GPIO %1 and %2s delay @ %3fps").arg(buttonPin_).arg(delaySeconds_).arg(frameRate_));
+    if (parser.isSet(autoFocusOption))
+        alwaysAutoFocus_ = true;
 }
 
 bool Application::configureCamera()
@@ -416,11 +456,12 @@ void Application::processCaptureEvent()
     request->reuse();
 
     // Set autofocus if triggered
-    if (firstFrame || (buttonIsPressed)) {
+    if (firstFrame || buttonIsPressed || alwaysAutoFocus_) {
         firstFrame = false;
         request->controls().set(controls::AfMode, controls::AfModeAuto);
         request->controls().set(controls::AfTrigger, 0);
-        autoFocusTimer_.start();
+        if (buttonIsPressed)
+            autoFocusTimer_.start();
     }
 
     // Add buffer and queue request

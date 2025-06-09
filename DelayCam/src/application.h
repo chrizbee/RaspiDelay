@@ -44,6 +44,7 @@ public:
     bool event(QEvent *e) override;
 
 private:
+    void parseSettings();
     void parseCommandline();
     bool configureCamera();
     bool start(bool isPreview);
@@ -60,6 +61,7 @@ private:
     float frameRate_;
     float delaySeconds_;
     int buttonPin_;
+    bool alwaysAutoFocus_;
     bool poolWasFull_;
 
     // Camera manager, camera, config and allocator
