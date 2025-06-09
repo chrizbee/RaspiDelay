@@ -41,8 +41,8 @@ Install WiringPi: https://github.com/WiringPi/WiringPi.
 git clone https://github.com/WiringPi/WiringPi.git
 cd WiringPi
 ./build debian
-mv debian-template/wiringpi-*.deb .
-sudo apt install ./wiringpi-*.deb
+mv debian-template/wiringpi*.deb .
+sudo apt install ./wiringpi*.deb
 ```
 
 ## Install DelayCam
