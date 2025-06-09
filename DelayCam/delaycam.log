@@ -1,5 +1,0 @@
-2025-03-28 13:24:41 INFO    main.cpp [9]: Starting DelayCam
-2025-03-28 13:24:41 INFO    application.cpp [101]: Using cameraimx708
-2025-03-28 13:24:41 INFO    application.cpp [183]: Using size 1536x864
-2025-03-28 13:24:41 INFO    framepool.cpp [20]: Required RAM: 569MB, Free RAM: 7107MB
-2025-03-28 13:24:42 INFO    framepool.cpp [49]: Created a frame pool for 300 frames (569MB)
