@@ -62,8 +62,10 @@ Application::Application(int &argc, char **argv) :
     window_->addWidget(viewFinder_);
 
     // Initialize and start camera
-    if (initCamera())
-        startCamera();
+    if (!initCamera())
+        progressWidget_->setTitle("No supported Camera connected!");
+    else if (!startCamera())
+        progressWidget_->setTitle("Failed to start Camera!");
 
     // Initialize WiringPi and debounce timer
     wiringPiSetupGpio();
@@ -124,10 +126,10 @@ bool Application::initCamera()
     return true;
 }
 
-void Application::startCamera()
+bool Application::startCamera()
 {
     stopCamera();
-    configureCamera();
+    return configureCamera();
 }
 
 void Application::stopCamera()

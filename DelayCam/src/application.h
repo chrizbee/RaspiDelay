@@ -38,7 +38,7 @@ public:
     Application(int &argc, char **argv);
     ~Application();
     bool initCamera();
-    void startCamera();
+    bool startCamera();
     void stopCamera();
     void releaseCamera();
     bool event(QEvent *e) override;

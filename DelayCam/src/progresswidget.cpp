@@ -16,6 +16,12 @@ void ProgressWidget::setProgress(size_t currentValue, size_t maxValue)
     update();
 }
 
+void ProgressWidget::setTitle(const QString &title)
+{
+    title_ = title;
+    update();
+}
+
 void ProgressWidget::paintEvent(QPaintEvent *)
 {
     // Initialize painter

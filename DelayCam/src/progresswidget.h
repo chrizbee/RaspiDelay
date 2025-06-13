@@ -10,6 +10,7 @@ class ProgressWidget : public QWidget
 public:
     ProgressWidget(const QString &title = "", QWidget *parent = nullptr);
     void setProgress(size_t currentValue, size_t maxValue);
+    void setTitle(const QString &title);
 
 protected:
     void paintEvent(QPaintEvent *) override;
