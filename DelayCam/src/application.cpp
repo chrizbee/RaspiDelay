@@ -15,6 +15,8 @@
 #include <QMutexLocker>
 #include <QStringList>
 #include <QSettings>
+#include <QPixmap>
+#include <QCursor>
 #include <QScreen>
 #include <QDir>
 
@@ -42,11 +44,20 @@ Application::Application(int &argc, char **argv) :
     alwaysAutoFocus_(false),
     poolWasFull_(false)
 {
-    // Set app info and parse command line arguments
+    // Set app info
     setOrganizationName("chrizbee");
     setOrganizationDomain("chrizbee.github.io");
     setApplicationName("DelayCam");
     setApplicationVersion(APP_VERSION);
+
+    // Blank cursor
+    QPixmap blank(32, 32);
+    blank.fill(Qt::transparent);
+    QCursor blankCursor(blank);
+    setOverrideCursor(blankCursor);
+    changeOverrideCursor(blankCursor);
+
+    // Parse command line arguments
     parseSettings();
     parseCommandline();
     dcInfo(QString("Using GPIO %1 and %2s delay @ %3fps, autofocus: %4").arg(buttonPin_).arg(delaySeconds_).arg(frameRate_).arg(alwaysAutoFocus_));
